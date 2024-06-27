@@ -1,0 +1,36 @@
+version: "3.8"
+services:
+  bloggin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: healerkay/bloggin:2
+    restart: always
+    container_name: bloggin
+    depends_on:
+      - mysql
+    ports:
+      - "804:80"
+
+  mysql:
+    image: mysql:5.7
+    restart: always
+    container_name:  mysql-bloggin
+    # ports:
+    #   - "3305:3306"
+    environment:
+      MYSQL_DATABASE: blog_admin_db
+      MYSQL_ROOT_USER: root 
+      MYSQL_ROOT_PASSWORD: password
+
+  phpmyadmin:
+    image: phpmyadmin
+    restart: always
+    container_name: phpmyadmin
+    depends_on:
+      - mysql
+    ports:
+      - "9195:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_ARBITRARY: 1

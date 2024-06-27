@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bloggin
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: bloggin
+  template:
+    metadata:
+      labels:
+        app: bloggin
+    spec:
+      containers:
+      - name: bloggin
+        image:  "{{ .Values.image.repository }}:{{ .Values.image.tag }}" 
+        ports:
+        - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bloggin-service
+spec:
+  selector:
+    app: bloggin
+  ports:
+  - port: 80
+    targetPort: 80
+
+  # type: LoadBalancer
+
+
+
+
+
+
+
+
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: bloggin
+# spec:
+#   replicas: {{ .Values.replicaCount }}
+#   selector:
+#     matchLabels:
+#       app: bloggin
+#   template:
+#     metadata:
+#       labels:
+#         app: bloggin
+#     spec:
+#       containers:
+#       - name: bloggin
+#         image: 'healerkay/bloggin:{{ .Values.image.tag }}'
+#         ports:
+#         - containerPort: 80
+
+# ---
+
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: bloggin-service
+# spec:
+#   selector:
+#     app: bloggin  # Corrected to match the deployment label
+#   ports:
+#   - port: 80
+#     protocol: TCP
+#     targetPort: 80
+#     nodePort: 30080
+#   type: NodePort

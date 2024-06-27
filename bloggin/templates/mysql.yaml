@@ -1,0 +1,103 @@
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mystatefulset
+spec:
+  selector:
+    matchLabels:
+      app: stateful-mysql
+  serviceName: statefulservice
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: stateful-mysql
+    spec:
+      containers:
+      - name: stateful-mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
+              key: MYSQL_DATABASE
+        - name: MYSQL_ROOT_USER
+          value: root
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_ROOT_PASSWORD
+
+
+          
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 3Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: statefulservice
+spec:
+  clusterIP: None
+  selector:
+    app: statefulservice
+  ports:
+  - port: 3306
+    targetPort: 3306 
+
+#Minikube Testing
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: bloggin-mysql
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: bloggin-mysql
+#   template:
+#     metadata:
+#       labels:
+#         app: bloggin-mysql
+#     spec:
+#       containers:
+#       - name: bloggin-mysql
+#         image: mysql:latest
+#         ports:
+#         - containerPort: 3306
+#         env:
+#         - name: MYSQL_ROOT_PASSWORD
+#           value: password
+#         - name: MYSQL_DATABASE
+#           value: blog_admin_db
+
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: mysql-service
+# spec:
+#   selector:
+#     app: bloggin-mysql
+#   ports:
+#   - port: 3306
+#     targetPort: 3306
+#     nodePort: 30083
+#     protocol: TCP
+#   type: NodePort
+

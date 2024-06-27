@@ -1,0 +1,341 @@
+
+# deployment using canary deployment
+
+name: Simple Bloggin-web Deployment
+on: 
+    push: 
+      branches: 
+        - main
+        - canary
+
+jobs: 
+  bloggin-deployment:
+    if: ${{ github.ref_name == 'main' }}
+    runs-on: ubuntu-latest
+    steps: 
+      - name: "first run job"
+        run: |
+          echo "--- welcome to bloggin app ---"
+      
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Create version number"
+        run: |
+          echo "VERSION_NUMBER=${RANDOM}" >> $GITHUB_ENV
+
+      - name: "Install/Upgrade ingress-nginx"
+        run: |
+          helm repo add nginx-stable https://helm.nginx.com/stable
+          helm repo update
+          helm upgrade --install ingress-nginx ingress-nginx \
+            --repo https://kubernetes.github.io/ingress-nginx \
+            --namespace ingress-nginx --create-namespace
+
+            
+      - name: "Install and fetch cert-manager"
+        run: |
+          helm repo add jetstack https://charts.jetstack.io
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --create-namespace \
+            --version v1.11.0 \
+            --set installCRDs=true
+          helm fetch \
+            --repo https://charts.jetstack.io \
+            --untar \
+            --untardir charts \
+            cert-manager
+ 
+       
+      - name: "install sonarqube scanner"
+        run: |
+          # Add the official SonarQube Helm chart repository to your Helm installation:
+          helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
+          # Install PostgreSQL:
+          helm upgrade --install postgresql-sonarqube bitnami/postgresql \
+            --set postgresqlUsername=sonar \
+            --set postgresqlPassword=sonarpassword \
+            --set postgresqlDatabase=sonarqube \
+            --set persistence.enabled=true \
+            --set persistence.size=5Gi
+
+          # # Install SonarQube:
+          # helm upgrade --install sonar sonarqube/sonarqube \
+          #   --set postgresql.enabled=true \
+          #   --set postgresql.postgresqlUsername=sonar \
+          #   --set postgresql.postgresqlPassword=sonarpassword \
+          #   --set postgresql.postgresqlDatabase=sonarqube \
+          #   --set jdbcOverwrite.jdbcUrl=jdbc:postgresql://postgresql-sonarqube-postgresql.default.svc.cluster.local:5432/sonarqube \
+          #   --set persistence.enabled=true \
+          #   --set persistence.size=5Gi \
+          #   --set service.type=LoadBalancer \
+          #   --set service.port=80 \
+          #   --set sonarqube.service.internalPort=9000 \
+          #   --set sonarqube.adminPassword=adminpassword
+
+
+          helm repo update
+          helm upgrade --install sonarqube sonarqube/sonarqube \
+            --set sonarqube.postgresql.enabled=true \
+            --set sonarqube.postgresql.postgresqlUsername=sonar \
+            --set sonarqube.postgresql.postgresqlPassword=sonarpassword \
+            --set sonarqube.postgresql.postgresqlDatabase=sonarqube \
+            --set persistence.enabled=true \
+            --set persistence.size=5Gi \
+            --set service.type=LoadBalancer \
+            --set service.port=80 \
+            --set sonarqube.service.internalPort=9000 \
+            --set sonarqube.adminPassword=adminpassword
+
+
+      - name: "install prometheus and grafana"
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+
+          helm upgrade --install prometheus prometheus-community/prometheus \
+            --set server.persistentVolume.enabled=true \
+            --set server.persistentVolume.size=5Gi \
+            --set server.service.type=NodePort \
+            --set server.service.port=9090
+
+
+          helm repo add grafana https://grafana.github.io/helm-charts 
+          helm repo update 
+          helm upgrade --install my-grafana grafana/grafana \
+            --set persistence.enabled=true \
+            --set persistence.size=5Gi \
+            --set service.type=NodePort \
+            --set service.port=80
+      
+      - name: "Build a Docker image from the repo v1"
+        run:  | 
+          docker build -t healerkay/bloggin:${{ env.VERSION_NUMBER}} .
+
+      - name: "Log into Docker Hub"
+        uses: docker/login-action@v3
+        with: 
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: "Push to Docker Hub"
+        run: |
+          docker push healerkay/bloggin:${{ env.VERSION_NUMBER }}
+
+      - name: "Install kubectl"
+        uses: azure/setup-kubectl@v3
+        with: 
+          version: "v1.19.3"
+        id: "install-kubectl"
+
+      - name: "Setup AWS Credentials"
+        uses: aws-actions/configure-aws-credentials@v4
+        with: 
+          aws-region: "us-east-1"
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key:  ${{ secrets.AWS_SECRET_KEY }}
+
+      - name: "Connect to the cluster"
+        run: |
+          aws eks update-kubeconfig --name my-cluster
+
+
+      - name: "Install Helm"
+        uses: azure/setup-helm@v4.2.0
+        id: "install-helm"
+
+      - name: "Use helm to install our charts"
+        run: |
+          helm upgrade --install bloggin bloggin -f bloggin/values.yaml --set image.tag=${{ env.VERSION_NUMBER}} --set replicaCount=3 --set canaryReplica=1
+
+      
+      
+      - name: "Announce the latest version of the deployment"
+        uses: dawidd6/action-send-mail@v3
+        with:
+                username: taykeny94@gmail.com
+                password: ${{ secrets.EMAIL_PASSWORD }}
+                server_address: smtp.gmail.com
+                server_port: 465
+                secure: true
+                subject: "New Docker Image Version for bloggin Web App - canary Deployment"
+                to: "abatankehinde1999@gmail.com, taiwoabatan66@gmail.com"
+                from: Abatan kehinde <taykeny94@gmail.com>
+                body: "New image build: healerkay/bloggin:${{ env.VERSION_NUMBER }}"
+
+
+
+ 
+  canary-deployment:
+    if: ${{ github.ref_name == 'canary' }}
+    runs-on: ubuntu-latest
+    steps: 
+      - name: "first test job"
+        run: |
+          echo "--- welcome to bloggin app ----"
+      
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Create version number"
+        run: |
+          echo "VERSION_NUMBER=${RANDOM}" >> $GITHUB_ENV
+      
+      - name: "Build a Docker image from the repo v1"
+        run:  | 
+          docker build -t healerkay/bloggin:${{ env.VERSION_NUMBER}} .
+
+      - name: "Log into Docker Hub"
+        uses: docker/login-action@v3
+        with: 
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: "Push to Docker Hub"
+        run: |
+          docker push healerkay/bloggin:${{ env.VERSION_NUMBER }}
+
+      - name: "Install kubectl"
+        uses: azure/setup-kubectl@v3
+        with: 
+          version: "v1.19.3"
+        id: "install-kubectl"
+
+      - name: "Setup AWS Credentials"
+        uses: aws-actions/configure-aws-credentials@v4
+        with: 
+          aws-region: "us-east-1"
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key:  ${{ secrets.AWS_SECRET_KEY }}
+
+      - name: "Connect to the cluster"
+        run: |
+          aws eks update-kubeconfig --name my-cluster
+
+
+      - name: "Install Helm"
+        uses: azure/setup-helm@v4.2.0
+        id: "install-helm"
+
+
+      - name: "Install/Upgrade ingress-nginx"
+        run: |
+          helm repo add nginx-stable https://helm.nginx.com/stable
+          helm repo update
+          helm upgrade --install ingress-nginx ingress-nginx \
+            --repo https://kubernetes.github.io/ingress-nginx \
+            --namespace ingress-nginx --create-namespace
+
+            
+      - name: "Install and fetch cert-manager"
+        run: |
+          helm repo add jetstack https://charts.jetstack.io
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --create-namespace \
+            --version v1.11.0 \
+            --set installCRDs=true
+          helm fetch \
+            --repo https://charts.jetstack.io \
+            --untar \
+            --untardir charts \
+            cert-manager
+ 
+
+       
+      - name: "install sonarqube scanner"
+        run: |
+          # Add the official SonarQube Helm chart repository to your Helm installation:
+          helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
+          # Install PostgreSQL:
+          helm upgrade --install postgresql-sonarqube bitnami/postgresql \
+            --set postgresqlUsername=sonar \
+            --set postgresqlPassword=sonarpassword \
+            --set postgresqlDatabase=sonarqube \
+            --set persistence.enabled=true \
+            --set persistence.size=5Gi
+
+          # # Install SonarQube:
+          # helm upgrade --install sonar sonarqube/sonarqube \
+          #   --set postgresql.enabled=true \
+          #   --set postgresql.postgresqlUsername=sonar \
+          #   --set postgresql.postgresqlPassword=sonarpassword \
+          #   --set postgresql.postgresqlDatabase=sonarqube \
+          #   --set jdbcOverwrite.jdbcUrl=jdbc:postgresql://postgresql-sonarqube-postgresql.default.svc.cluster.local:5432/sonarqube \
+          #   --set persistence.enabled=true \
+          #   --set persistence.size=5Gi \
+          #   --set service.type=LoadBalancer \
+          #   --set service.port=80 \
+          #   --set sonarqube.service.internalPort=9000 \
+          #   --set sonarqube.adminPassword=adminpassword
+
+
+          helm repo update
+          helm upgrade --install sonarqube sonarqube/sonarqube \
+            --set sonarqube.postgresql.enabled=true \
+            --set sonarqube.postgresql.postgresqlUsername=sonar \
+            --set sonarqube.postgresql.postgresqlPassword=sonarpassword \
+            --set sonarqube.postgresql.postgresqlDatabase=sonarqube \
+            --set persistence.enabled=true \
+            --set persistence.size=5Gi \
+            --set service.type=LoadBalancer \
+            --set service.port=80 \
+            --set sonarqube.service.internalPort=9000 \
+            --set sonarqube.adminPassword=adminpassword
+
+
+
+
+
+      - name: "install prometheus and grafana"
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+
+          helm upgrade --install prometheus prometheus-community/prometheus \
+            --set server.persistentVolume.enabled=true \
+            --set server.persistentVolume.size=5Gi \
+            --set server.service.type=NodePort \
+            --set server.service.port=9090
+
+
+          helm repo add grafana https://grafana.github.io/helm-charts 
+          helm repo update 
+          helm upgrade --install my-grafana grafana/grafana \
+            --set persistence.enabled=true \
+            --set persistence.size=5Gi \
+            --set service.type=NodePort \
+            --set service.port=80
+
+
+
+ 
+
+      - name: "Use helm to install our charts"
+        run: |
+          helm upgrade --install bloggin bloggin -f bloggin/values.yaml --set canary.tag=${{ env.VERSION_NUMBER}} --set replicaCount=2 --set canaryReplica=2
+
+
+      - name: "Announce the latest version of the deployment"
+        uses: dawidd6/action-send-mail@v3
+        with:
+                username: taykeny94@gmail.com
+                password: ${{ secrets.EMAIL_PASSWORD }}
+                server_address: smtp.gmail.com
+                server_port: 465
+                secure: true
+                subject: "New Docker Image Version for bloggin Web App - canary Deployment"
+                to: "abatankehinde1999@gmail.com, taiwoabatan66@gmail.com"
+                from: Abatan kehinde <taykeny94@gmail.com>
+                body: "New image build: healerkay/bloggin:${{ env.VERSION_NUMBER }}"
+
+
+
+    

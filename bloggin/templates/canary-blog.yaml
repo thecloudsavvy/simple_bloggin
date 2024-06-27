@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canary-bloggin
+spec:
+  replicas: {{ .Values.canaryReplica }}
+  selector:
+    matchLabels:
+      app: bloggin
+  template:
+    metadata:
+      labels:
+        app: bloggin
+    spec:
+      containers:
+      - name: canary-bloggin
+        image: "{{ .Values.canary.repository }}:{{ .Values.canary.tag }}" 
+        ports:
+        - containerPort: 80
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: bloggin-service
+spec:
+  selector:
+    app: bloggin
+  ports:
+  - port: 80
+    targetPort: 80
