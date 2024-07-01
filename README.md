@@ -1,4 +1,4 @@
-# A Sample Responsive Blogging platform
+# A Responsive Blogging platform
 A simple PHP Blogging platform
 
 ### Technologies to Use:
