@@ -15,7 +15,7 @@ A simple PHP Blogging platform
 * OIDC for Authentication
 * Persistent Volume Claims (PVC) and Storage Class for Data Persistence
 * Sonarqube for continous integration && Testing
-* Srometheus && grafana
+* Prometheus && grafana
 
 ## Setup to deploy on Aws Eks
 1. write a docker compose file and build an image of it
